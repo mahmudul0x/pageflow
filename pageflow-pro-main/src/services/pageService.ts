@@ -20,4 +20,10 @@ export const pageService = {
     const pages = Array.isArray(data?.pages) ? data.pages : data;
     return Array.isArray(pages) ? pages.map(toPage) : [];
   },
+  toggle: async (id: string): Promise<{ is_active: boolean }> => {
+    const { data } = await api.patch(`/pages/${id}/toggle/`);
+    return {
+      is_active: Boolean(data?.is_active),
+    };
+  },
 };

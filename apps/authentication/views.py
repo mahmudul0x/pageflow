@@ -83,7 +83,7 @@ class FacebookAuthURLView(APIView):
         if mode == "posting":
             scope = "pages_show_list,pages_read_engagement,pages_manage_posts"
         else:
-            scope = "pages_show_list"
+            scope = "pages_show_list,pages_read_engagement"  # Include for analytics
 
         auth_url = (
             f"https://www.facebook.com/v18.0/dialog/oauth"
@@ -187,3 +187,11 @@ class LogoutView(APIView):
         except Exception:
             pass
         return Response({"message": "Logged out successfully"})
+
+
+class DeleteAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        request.user.delete()
+        return Response({"message": "Account deleted successfully"})

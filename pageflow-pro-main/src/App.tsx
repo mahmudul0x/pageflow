@@ -8,6 +8,7 @@ import Auth from "./pages/Auth";
 import DashboardLayout from "./pages/dashboard/DashboardLayout";
 import DashboardHome from "./pages/dashboard/DashboardHome";
 import CreatePost from "./pages/dashboard/CreatePost";
+import AllPosts from "./pages/dashboard/AllPosts";
 import Scheduled from "./pages/dashboard/Scheduled";
 import Analytics from "./pages/dashboard/Analytics";
 import Settings from "./pages/dashboard/Settings";
@@ -26,7 +27,7 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/auth" element={<Auth />} />
@@ -41,6 +42,7 @@ const App = () => (
           >
             <Route index element={<DashboardHome />} />
             <Route path="create-post" element={<CreatePost />} />
+            <Route path="posts" element={<AllPosts />} />
             <Route path="scheduled" element={<Scheduled />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="settings" element={<Settings />} />

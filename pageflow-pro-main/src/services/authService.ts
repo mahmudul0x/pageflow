@@ -43,6 +43,10 @@ export const authService = {
     } catch {}
   },
 
+  deleteAccount: async () => {
+    return (await api.delete('/auth/delete-account/')).data;
+  },
+
   me: async (): Promise<AuthUser> => {
     const { data } = await api.get('/auth/me/');
     return data;

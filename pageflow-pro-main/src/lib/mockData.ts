@@ -13,9 +13,12 @@ export interface Post {
   pageNames: string[];
   content: string;
   mediaUrl?: string;
+  mediaType?: string;
   status: 'published' | 'scheduled' | 'draft' | 'failed';
   createdAt: string;
   scheduledFor?: string;
+  publishedAt?: string;
+  hidden?: boolean;
   reach?: number;
   engagement?: number;
   publishResults?: Array<{

@@ -1,6 +1,6 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import RegisterView, LoginView, FacebookAuthURLView, FacebookCallbackView, MeView, LogoutView
+from .views import RegisterView, LoginView, FacebookAuthURLView, FacebookCallbackView, MeView, LogoutView, DeleteAccountView
 
 urlpatterns = [
     path('register/', RegisterView.as_view()),
@@ -9,5 +9,6 @@ urlpatterns = [
     path('facebook-callback/', FacebookCallbackView.as_view()),
     path('me/', MeView.as_view()),
     path('logout/', LogoutView.as_view()),
+    path('delete-account/', DeleteAccountView.as_view()),
     path('token/refresh/', TokenRefreshView.as_view()),
 ]

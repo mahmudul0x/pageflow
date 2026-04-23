@@ -12,7 +12,7 @@ app.autodiscover_tasks()
 def publish_scheduled_posts():
     """প্রতি মিনিটে run হয়, scheduled posts publish করে"""
     from django.utils import timezone
-    from apps.posts.models import Post
+    from apps.posts.models import Post, PagePostResult
     from apps.posts.views import publish_to_page
 
     now = timezone.now()
@@ -22,11 +22,29 @@ def publish_scheduled_posts():
     )
 
     for post in due_posts:
-        post.status = 'published'
-        post.published_at = now
-        post.save()
+        results = []
 
         for page in post.pages.all():
-            publish_to_page(page, post.content, post.media_url, post.media_type)
+            result = publish_to_page(page, post.content, post.media_url, None, post.media_type)
+            PagePostResult.objects.create(
+                post=post,
+                page=page,
+                fb_post_id=result.get("fb_post_id"),
+                success=result["success"],
+                error=result.get("error"),
+                published_at=now if result["success"] else None,
+            )
+            results.append(result)
+
+        success_count = sum(1 for result in results if result["success"])
+        if success_count == 0:
+            post.status = 'failed'
+            post.published_at = None
+            post.error_message = "; ".join(filter(None, [result.get("error") for result in results]))
+        else:
+            post.status = 'published'
+            post.published_at = now
+            post.error_message = "; ".join(filter(None, [result.get("error") for result in results])) or None
+        post.save(update_fields=["status", "published_at", "error_message"])
 
     return f"Published {due_posts.count()} scheduled posts"

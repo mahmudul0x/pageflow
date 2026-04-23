@@ -24,7 +24,7 @@ INSTALLED_APPS = [
     # Our apps
     'apps.authentication',
     'apps.pages',
-    'apps.posts',
+    'apps.posts.apps.PostsConfig',
     'apps.analytics',
 ]
 

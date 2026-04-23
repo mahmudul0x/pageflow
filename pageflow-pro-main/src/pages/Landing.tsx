@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { Card } from "@/components/ui/card";
@@ -54,6 +55,14 @@ const tiers = [
 ];
 
 const Landing = () => {
+  const handleComingSoon = (label: string) => {
+    toast.info(`${label} is coming soon. You can explore the live product after signing in.`);
+  };
+
+  const scrollToPreview = () => {
+    document.getElementById("product-preview")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navbar */}
@@ -63,7 +72,9 @@ const Landing = () => {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
-            <a href="#" className="hover:text-foreground transition-colors">Docs</a>
+            <button type="button" onClick={() => handleComingSoon("Docs")} className="hover:text-foreground transition-colors">
+              Docs
+            </button>
           </nav>
           <div className="flex items-center gap-2 sm:gap-3">
             <Link to="/auth" className="hidden sm:block">
@@ -97,7 +108,7 @@ const Landing = () => {
                   Get Started Free <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </Link>
-              <Button size="lg" variant="outline" className="h-12 px-8 text-base">
+              <Button size="lg" variant="outline" className="h-12 px-8 text-base" onClick={scrollToPreview}>
                 Watch demo
               </Button>
             </div>
@@ -105,7 +116,7 @@ const Landing = () => {
           </div>
 
           {/* Hero Preview */}
-          <div className="mt-12 sm:mt-20 max-w-5xl mx-auto animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
+          <div id="product-preview" className="mt-12 sm:mt-20 max-w-5xl mx-auto animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
             <div className="relative rounded-2xl border border-border bg-card shadow-elevated overflow-hidden">
               <div className="flex items-center gap-1.5 px-4 py-3 border-b border-border bg-muted/30">
                 <div className="h-3 w-3 rounded-full bg-destructive/50" />
@@ -236,7 +247,13 @@ const Landing = () => {
                 <ul className="space-y-2">
                   {col.links.map((l) => (
                     <li key={l}>
-                      <a href="#" className="text-sm text-muted-foreground hover:text-foreground transition-colors">{l}</a>
+                      <button
+                        type="button"
+                        onClick={() => handleComingSoon(l)}
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {l}
+                      </button>
                     </li>
                   ))}
                 </ul>

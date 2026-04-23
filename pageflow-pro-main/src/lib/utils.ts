@@ -7,5 +7,8 @@ export function cn(...inputs: ClassValue[]) {
 
 export function buildFacebookPostUrl(fbPostId?: string) {
   if (!fbPostId) return null;
-  return `https://www.facebook.com/${fbPostId}`;
+  if (fbPostId.includes("_")) {
+    return `https://www.facebook.com/${fbPostId}`;
+  }
+  return `https://www.facebook.com/watch/?v=${fbPostId}`;
 }
