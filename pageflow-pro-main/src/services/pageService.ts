@@ -11,8 +11,10 @@ const toPage = (page: any): FBPage => ({
 });
 
 export const pageService = {
-  list: async (): Promise<FBPage[]> => {
-    const { data } = await api.get('/pages/');
+  list: async (options?: { includeInactive?: boolean }): Promise<FBPage[]> => {
+    const { data } = await api.get('/pages/', {
+      params: options?.includeInactive ? { include_inactive: true } : undefined,
+    });
     return Array.isArray(data) ? data.map(toPage) : [];
   },
   sync: async (): Promise<FBPage[]> => {

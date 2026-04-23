@@ -45,6 +45,12 @@ def parse_scheduled_time_value(value):
     return parsed
 
 
+def build_media_file_url(request, media_file):
+    saved_path = save_uploaded_media(media_file)
+    relative_url = f"{settings.MEDIA_URL}{saved_path.replace(os.sep, '/')}"
+    return request.build_absolute_uri(relative_url)
+
+
 def serialize_post(post):
     return {
         "id": post.id,
@@ -61,6 +67,7 @@ def serialize_post(post):
         "results": [
             {
                 "page": result.page.name,
+                "page_id": result.page.page_id,
                 "success": result.success,
                 "fb_post_id": result.fb_post_id,
                 "error": result.error,
@@ -464,6 +471,7 @@ class PublishPostView(APIView):
                 update_publish_session(publish_session, progress=0, stage="Failed", message=error, status="failed")
                 return Response({"error": error}, status=400)
             media_type = media_type or detected_media_type
+            media_url = build_media_file_url(request, media_file)
 
         pages = FacebookPage.objects.filter(id__in=page_ids, user=request.user, is_active=True)
         if not pages.exists():
@@ -481,7 +489,7 @@ class PublishPostView(APIView):
         post = Post.objects.create(
             user=request.user,
             content=content,
-            media_url=media_url if not media_file else None,
+            media_url=media_url,
             media_type=media_type,
             status="published",
             published_at=timezone.now(),

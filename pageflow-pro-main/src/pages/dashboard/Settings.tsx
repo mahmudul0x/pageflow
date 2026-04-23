@@ -5,11 +5,12 @@ import { AlertTriangle, Facebook, Globe2, Link2, Plus, RefreshCcw, ShieldCheck, 
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { authService } from "@/services/authService";
 import { pageService } from "@/services/pageService";
+import { cn } from "@/lib/utils";
 import { useAppStore } from "@/store/useAppStore";
 import type { FBPage } from "@/lib/mockData";
 
@@ -18,7 +19,10 @@ const Settings = () => {
   const queryClient = useQueryClient();
   const user = useAppStore((s) => s.user);
   const logout = useAppStore((s) => s.logout);
-  const { data: initial = [] } = useQuery({ queryKey: ["pages"], queryFn: pageService.list });
+  const { data: initial = [] } = useQuery({
+    queryKey: ["pages", "settings", "all"],
+    queryFn: () => pageService.list({ includeInactive: true }),
+  });
   const [pages, setPages] = useState<FBPage[]>([]);
   const [togglingPageId, setTogglingPageId] = useState<string | null>(null);
 
@@ -54,8 +58,9 @@ const Settings = () => {
   const handleSyncPages = async () => {
     try {
       const synced = await pageService.sync();
-      setPages(synced);
       await queryClient.invalidateQueries({ queryKey: ["pages"] });
+      const refreshed = await pageService.list({ includeInactive: true });
+      setPages(refreshed);
       toast.success(`Synced ${synced.length} Facebook page${synced.length === 1 ? "" : "s"}.`);
     } catch {
       toast.error("Could not sync Facebook pages.");
@@ -136,7 +141,9 @@ const Settings = () => {
             <div className="rounded-[24px] border border-border/70 bg-secondary/35 p-4">
               <Globe2 className="mb-3 h-5 w-5 text-accent" />
               <p className="text-sm text-muted-foreground">Publishing status</p>
-              <p className="mt-2 text-lg font-semibold">{user?.facebook_id ? "Ready to sync" : "Needs connection"}</p>
+              <p className="mt-2 text-lg font-semibold">
+                {user?.facebook_id ? `${pages.filter((page) => page.enabled).length} active page${pages.filter((page) => page.enabled).length === 1 ? "" : "s"}` : "Needs connection"}
+              </p>
             </div>
           </div>
         </Card>
@@ -164,22 +171,41 @@ const Settings = () => {
             </div>
           ) : null}
 
-          {pages.map((page) => (
-            <div key={page.id} className="flex items-center gap-4 rounded-[24px] border border-border/70 bg-secondary/25 p-4 transition-colors hover:bg-secondary/40">
+{pages.map((page) => (
+            <div key={page.id} className="flex flex-col gap-4 rounded-[24px] border border-border/70 bg-secondary/25 p-4 transition-colors hover:bg-secondary/40 sm:flex-row sm:items-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-primary text-xl text-white">
                 {page.avatar}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{page.name}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate font-medium">{page.name}</p>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "rounded-full border px-2.5 py-0.5 text-xs",
+                      page.enabled
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        : "border-slate-200 bg-slate-100 text-slate-600"
+                    )}
+                  >
+                    {page.enabled ? "Enabled" : "Disabled"}
+                  </Badge>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  {page.category} · {(page.followers / 1000).toFixed(1)}K followers
+                  {page.category} | {(page.followers / 1000).toFixed(1)}K followers
                 </p>
               </div>
-              <Switch
-                checked={page.enabled}
+              <Button
+                variant={page.enabled ? "outline" : "default"}
                 disabled={togglingPageId === page.id}
-                onCheckedChange={() => void togglePage(page.id)}
-              />
+                onClick={() => void togglePage(page.id)}
+                className={cn(
+                  "w-full rounded-xl sm:w-auto",
+                  !page.enabled ? "bg-gradient-primary text-white hover:opacity-90" : ""
+                )}
+              >
+                {togglingPageId === page.id ? "Updating..." : page.enabled ? "Disable" : "Enable"}
+              </Button>
             </div>
           ))}
         </div>

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { LayoutDashboard, PenSquare, Calendar, BarChart3, Settings, LogOut, Menu, X, Bell, Search, Files } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,12 +22,34 @@ const navItems = [
 const DashboardLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const logout = useAppStore((s) => s.logout);
   const user = useAppStore((s) => s.user);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [headerSearch, setHeaderSearch] = useState(searchParams.get("q") || "");
 
   const pageTitle =
     navItems.find((item) => item.to === location.pathname || (item.end && location.pathname === "/dashboard"))?.label || "Workspace";
+  const isAnalyticsPage = location.pathname === "/dashboard/analytics";
+  const isAllPostsPage = location.pathname === "/dashboard/posts";
+  const isDashboardPage = location.pathname === "/dashboard";
+  const showsHeaderSearch = isAnalyticsPage || isAllPostsPage || isDashboardPage;
+
+  useEffect(() => {
+    if (!showsHeaderSearch) {
+      setHeaderSearch("");
+      setSearchParams({});
+    }
+  }, [showsHeaderSearch, setSearchParams]);
+
+  const handleSearchChange = (value: string) => {
+    setHeaderSearch(value);
+    if (value) {
+      setSearchParams({ q: value });
+    } else {
+      setSearchParams({});
+    }
+  };
 
   const handleLogout = async () => {
     await authService.logout();
@@ -40,7 +62,7 @@ const DashboardLayout = () => {
     <div className="min-h-screen bg-gradient-soft">
       <button
         onClick={() => setMobileOpen((current) => !current)}
-        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-2xl bg-sidebar text-sidebar-foreground shadow-elevated lg:hidden"
+        className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-800 bg-slate-950 text-slate-100 shadow-elevated lg:hidden"
       >
         {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
       </button>
@@ -48,20 +70,22 @@ const DashboardLayout = () => {
       <div className="flex min-h-screen">
         <aside
           className={cn(
-            "fixed left-0 top-0 z-40 flex h-screen w-72 flex-col overflow-y-auto border-r border-sidebar-border/70 bg-sidebar/95 px-5 pb-5 pt-6 text-sidebar-foreground backdrop-blur-xl transition-transform duration-300 lg:sticky lg:translate-x-0",
+            "fixed left-0 top-0 z-40 flex h-screen w-64 flex-col overflow-y-auto border-r border-slate-800 bg-slate-950 px-4 pb-4 pt-5 text-slate-200 transition-transform duration-300 lg:sticky lg:translate-x-0",
             mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           )}
         >
-          <div className="mb-6 rounded-[28px] border border-white/10 bg-white/5 p-5 shadow-card">
-            <div className="flex items-center justify-between">
+          <div className="mb-5 rounded-[20px] border border-slate-800 bg-slate-900 p-4">
+            <div className="flex items-center justify-between gap-3">
               <Logo variant="light" />
-              <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-white/80">
-                Pro
+              <span className="rounded-full border border-slate-700 bg-slate-800 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-300">
+                Admin
               </span>
             </div>
           </div>
 
-          <nav className="flex-1 space-y-2 pb-4">
+          <div className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500">Workspace</div>
+
+          <nav className="flex-1 space-y-1.5 pb-4">
             {navItems.map((item) => (
               <NavLink
                 key={item.to}
@@ -70,12 +94,14 @@ const DashboardLayout = () => {
                 onClick={() => setMobileOpen(false)}
                 className={({ isActive }) =>
                   cn(
-                    "group flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all",
-                    isActive ? "bg-white text-sidebar shadow-card" : "text-sidebar-foreground hover:bg-white/8 hover:text-white"
+                    "group flex items-center gap-3 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all",
+                    isActive
+                      ? "border-slate-700 bg-slate-900 text-white"
+                      : "border-transparent text-slate-300 hover:border-slate-800 hover:bg-slate-900 hover:text-white"
                   )
                 }
               >
-                <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/8 transition-all group-hover:bg-white/12">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-slate-400 transition-all group-hover:text-slate-100">
                   <item.icon className="h-4 w-4" />
                 </span>
                 <span className="flex-1">{item.label}</span>
@@ -83,23 +109,23 @@ const DashboardLayout = () => {
             ))}
           </nav>
 
-          <div className="mt-6 rounded-[28px] border border-white/10 bg-white/5 p-4">
-            <div className="mb-4 flex items-center gap-3">
-              <Avatar className="h-11 w-11">
-                <AvatarFallback className="bg-gradient-primary text-xs font-semibold text-primary-foreground">
+          <div className="mt-5 rounded-[20px] border border-slate-800 bg-slate-900 p-3.5">
+            <div className="mb-3 flex items-center gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback className="bg-slate-800 text-xs font-semibold text-slate-100">
                   {user?.avatar || user?.name?.slice(0, 2).toUpperCase() || "PF"}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-white">{user?.name || "PageFlow User"}</p>
-                <p className="truncate text-xs text-sidebar-foreground">{user?.email || "No email"}</p>
+                <p className="truncate text-xs text-slate-400">{user?.email || "No email"}</p>
               </div>
             </div>
             <Button
               size="sm"
               variant="ghost"
               onClick={handleLogout}
-              className="w-full justify-start gap-2 rounded-xl border border-white/10 bg-white/5 text-sidebar-foreground hover:bg-white/10 hover:text-white"
+              className="w-full justify-start gap-2 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 hover:bg-slate-800 hover:text-white"
             >
               <LogOut className="h-4 w-4" />
               Log out
@@ -123,10 +149,22 @@ const DashboardLayout = () => {
                 <h1 className="text-lg font-semibold text-foreground">{pageTitle}</h1>
               </div>
               <div className="flex items-center gap-3">
-                <div className="hidden min-w-[250px] items-center gap-3 rounded-2xl border border-border/70 bg-white/70 px-4 py-2.5 text-sm text-muted-foreground shadow-soft md:flex">
-                  <Search className="h-4 w-4" />
-                  Search posts, pages, or insights
-                </div>
+                {showsHeaderSearch ? (
+                  <div className="hidden min-w-[250px] items-center gap-3 rounded-2xl border border-border/70 bg-white/70 px-4 py-2.5 text-sm text-muted-foreground shadow-soft md:flex">
+                    <Search className="h-4 w-4" />
+                    <input
+                      value={headerSearch}
+                      onChange={(event) => handleSearchChange(event.target.value)}
+                      placeholder={isAnalyticsPage ? "Search posts, pages, or IDs" : isDashboardPage ? "Search posts..." : "Search post content"}
+                      className="w-full border-0 bg-transparent text-foreground outline-none placeholder:text-muted-foreground"
+                    />
+                  </div>
+                ) : (
+                  <div className="hidden min-w-[250px] items-center gap-3 rounded-2xl border border-border/70 bg-white/70 px-4 py-2.5 text-sm text-muted-foreground shadow-soft md:flex">
+                    <Search className="h-4 w-4" />
+                    Search posts, pages, or insights
+                  </div>
+                )}
                 <button className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border/70 bg-white/70 text-muted-foreground shadow-soft transition hover:text-foreground">
                   <Bell className="h-4 w-4" />
                 </button>
@@ -134,7 +172,7 @@ const DashboardLayout = () => {
             </div>
           </div>
 
-          <Outlet />
+          <Outlet context={{ headerSearch, setHeaderSearch }} />
         </main>
       </div>
     </div>

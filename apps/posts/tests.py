@@ -252,6 +252,10 @@ class MediaUploadValidationTests(TestCase):
         self.assertEqual(response.data["success_count"], 1)
         self.assertEqual(response.data["failed_count"], 0)
         self.assertEqual(response.data["results"][0]["fb_post_id"], "video-post-456")
+        post = Post.objects.get()
+        self.assertEqual(post.media_type, "video")
+        self.assertIsNotNone(post.media_url)
+        self.assertIn("/media/uploads/", post.media_url)
         self.assertEqual(
             mock_post.call_args_list[0].args[0],
             "https://graph-video.facebook.com/v18.0/page-media/videos",

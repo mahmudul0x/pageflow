@@ -81,9 +81,9 @@ class FacebookAuthURLView(APIView):
         redirect_uri = settings.FACEBOOK_REDIRECT_URI
         mode = request.query_params.get("mode", "pages")
         if mode == "posting":
-            scope = "pages_show_list,pages_read_engagement,pages_manage_posts"
+            scope = "pages_show_list,pages_read_engagement,pages_manage_posts,read_insights"
         else:
-            scope = "pages_show_list,pages_read_engagement"  # Include for analytics
+            scope = "pages_show_list,pages_read_engagement,read_insights"
 
         auth_url = (
             f"https://www.facebook.com/v18.0/dialog/oauth"

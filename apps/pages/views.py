@@ -10,7 +10,10 @@ class PagesListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        pages = FacebookPage.objects.filter(user=request.user, is_active=True)
+        include_inactive = str(request.query_params.get("include_inactive", "")).strip().lower() in {"1", "true", "yes"}
+        pages = FacebookPage.objects.filter(user=request.user)
+        if not include_inactive:
+            pages = pages.filter(is_active=True)
         data = [{
             "id": page.id,
             "page_id": page.page_id,

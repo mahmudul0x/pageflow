@@ -23,6 +23,7 @@ export interface Post {
   engagement?: number;
   publishResults?: Array<{
     page: string;
+    pageFbId?: string;
     success: boolean;
     fbPostId?: string;
     error?: string;

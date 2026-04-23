@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { ArrowUpRight, Calendar, EyeOff, FileSearch, Filter, PencilLine, Search, Send, Sparkles, Trash2 } from "lucide-react";
+import { useOutletContext } from "react-router-dom";
+import { ArrowUpRight, Calendar, EyeOff, FileSearch, Filter, PencilLine, Send, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { buildFacebookPostUrl } from "@/lib/utils";
 import { pageService } from "@/services/pageService";
@@ -33,12 +35,52 @@ const StatusBadge = ({ status }: { status: string }) => {
   );
 };
 
+const buildPostPreview = (content: string, maxLength = 120) => {
+  const compact = content.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength).trimEnd()}...`;
+};
+
+const renderPostMediaPreview = (post: Post) => {
+  if (!post.mediaUrl) return null;
+
+  if (post.mediaType === "video") {
+    return (
+      <video
+        src={post.mediaUrl}
+        className="h-10 w-10 shrink-0 rounded-2xl border border-slate-200 object-cover"
+        muted
+        playsInline
+        preload="metadata"
+      />
+    );
+  }
+
+  if (post.mediaType === "image") {
+    return (
+      <img
+        src={post.mediaUrl}
+        alt="Post media"
+        className="h-10 w-10 shrink-0 rounded-2xl border border-slate-200 object-cover"
+        loading="lazy"
+      />
+    );
+  }
+
+  return null;
+};
+
+type DashboardLayoutContext = {
+  headerSearch: string;
+  setHeaderSearch: (value: string) => void;
+};
+
 const AllPosts = () => {
   const qc = useQueryClient();
   const { data: pages = [] } = useQuery({ queryKey: ["pages"], queryFn: pageService.list });
+  const { headerSearch, setHeaderSearch } = useOutletContext<DashboardLayoutContext>();
   const [selectedPageIds, setSelectedPageIds] = useState<string[]>([]);
   const [status, setStatus] = useState<(typeof statusOptions)[number]>("all");
-  const [search, setSearch] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showHidden, setShowHidden] = useState(false);
@@ -47,18 +89,17 @@ const AllPosts = () => {
   const [editScheduledTime, setEditScheduledTime] = useState("");
   const [editPageIds, setEditPageIds] = useState<string[]>([]);
   const [actionLoading, setActionLoading] = useState<"save" | "schedule" | "publish" | null>(null);
-  const [quickActionPostId, setQuickActionPostId] = useState<string | null>(null);
 
   const filters = useMemo(
     () => ({
       status: status === "all" ? undefined : status,
       page_ids: selectedPageIds.length ? selectedPageIds : undefined,
-      search: search || undefined,
+      search: headerSearch || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
       include_hidden: showHidden || undefined,
     }),
-    [dateFrom, dateTo, search, selectedPageIds, showHidden, status]
+    [dateFrom, dateTo, headerSearch, selectedPageIds, showHidden, status]
   );
 
   const { data: posts = [], isLoading } = useQuery({
@@ -165,29 +206,6 @@ const AllPosts = () => {
     }
   };
 
-  const handleQuickPublishDraft = async (post: Post) => {
-    try {
-      setQuickActionPostId(post.id);
-      const response = await postService.publishExisting(post.id);
-      const successPages = response.results
-        .filter((result: any) => result.success)
-        .map((result: any) => (result.fb_post_id ? `${result.page} (${result.fb_post_id})` : result.page));
-      const failedPages = response.results
-        .filter((result: any) => !result.success)
-        .map((result: any) => `${result.page}: ${result.error || "Unknown error"}`);
-
-      toast.success(successPages.length ? `Published successfully: ${successPages.join(", ")}` : response.message);
-      if (failedPages.length) {
-        toast.error(`Failed pages: ${failedPages.join(" | ")}`);
-      }
-      await refreshPosts();
-    } catch (error: any) {
-      toast.error(error?.response?.data?.error || "Could not publish the draft.");
-    } finally {
-      setQuickActionPostId(null);
-    }
-  };
-
   const handleOpenDraftScheduler = (post: Post) => {
     openEdit(post);
     setEditScheduledTime(post.scheduledFor ? post.scheduledFor.slice(0, 16) : "");
@@ -217,67 +235,76 @@ const AllPosts = () => {
 
   return (
     <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
-      <section className="mb-8 rounded-[32px] bg-gradient-hero px-6 py-7 text-white shadow-elevated sm:px-8">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Post management</p>
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">See all posts and manage them page by page.</h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/78 sm:text-base">
-          Filter by specific pages, review published and scheduled content, then edit, hide, or delete posts from one clean workspace.
-        </p>
-      </section>
-
-      <Card className="surface-panel mb-8 rounded-[30px] border-none p-5 sm:p-6">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
-            <Filter className="h-5 w-5 text-primary" />
+      <Card className="surface-panel mb-8 rounded-[28px] border-none p-4 sm:p-5">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                <Filter className="h-4.5 w-4.5" />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Filters</p>
+                <p className="mt-1 text-sm text-muted-foreground">Search by content, date, status, or page.</p>
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Filters</p>
-            <h2 className="text-xl font-semibold">Find the exact posts you need</h2>
+
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,190px)_minmax(0,190px)_minmax(0,180px)_minmax(0,220px)_minmax(0,170px)]">
+            <div className="rounded-[20px] border border-border/60 bg-slate-50/70 p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Start date</p>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-10 rounded-xl border-border/70 bg-white" />
+            </div>
+            <div className="rounded-[20px] border border-border/60 bg-slate-50/70 p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">End date</p>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-10 rounded-xl border-border/70 bg-white" />
+            </div>
+            <div className="rounded-[20px] border border-border/60 bg-slate-50/70 p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Status</p>
+              <Select value={status} onValueChange={(value) => setStatus(value as (typeof statusOptions)[number])}>
+                <SelectTrigger className="h-10 rounded-xl border-border/70 bg-white">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusOptions.map((option) => (
+                    <SelectItem key={option} value={option} className="capitalize">
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-[20px] border border-border/60 bg-slate-50/70 p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pages</p>
+              <Select
+                value={selectedPageIds[0] ?? "all"}
+                onValueChange={(value) => setSelectedPageIds(value === "all" ? [] : [value])}
+              >
+                <SelectTrigger className="h-10 rounded-xl border-border/70 bg-white">
+                  <SelectValue placeholder="Select page" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All pages</SelectItem>
+                  {pages.map((page) => (
+                    <SelectItem key={page.id} value={page.id}>
+                      {page.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-[20px] border border-border/60 bg-slate-50/70 p-3">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Visibility</p>
+              <Button
+                variant={showHidden ? "default" : "outline"}
+                className="h-10 w-full rounded-xl px-4"
+                onClick={() => setShowHidden((current) => !current)}
+              >
+                {showHidden ? "Hidden included" : "Show hidden posts"}
+              </Button>
+            </div>
           </div>
-        </div>
-
-        <div className="mb-5 grid gap-3 lg:grid-cols-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search post content" className="rounded-2xl pl-10" />
-          </div>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="rounded-2xl" />
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="rounded-2xl" />
-          <Button
-            variant={showHidden ? "default" : "outline"}
-            className="rounded-2xl"
-            onClick={() => setShowHidden((current) => !current)}
-          >
-            {showHidden ? "Showing hidden too" : "Show hidden posts"}
-          </Button>
-        </div>
-
-        <div className="mb-5 flex flex-wrap gap-2">
-          {statusOptions.map((option) => (
-            <Button
-              key={option}
-              variant={status === option ? "default" : "outline"}
-              size="sm"
-              className="rounded-full capitalize"
-              onClick={() => setStatus(option)}
-            >
-              {option}
-            </Button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {pages.map((page) => (
-            <Button
-              key={page.id}
-              variant={selectedPageIds.includes(page.id) ? "default" : "outline"}
-              size="sm"
-              className="rounded-full"
-              onClick={() => togglePageFilter(page.id)}
-            >
-              {page.name}
-            </Button>
-          ))}
         </div>
       </Card>
 
@@ -286,14 +313,14 @@ const AllPosts = () => {
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">Results</p>
           <h2 className="text-xl font-semibold">All Posts ({visiblePosts.length})</h2>
         </div>
-        {(selectedPageIds.length || search || dateFrom || dateTo || status !== "all") && (
+        {(selectedPageIds.length || headerSearch || dateFrom || dateTo || status !== "all") && (
           <Button
             variant="outline"
             className="rounded-xl"
             onClick={() => {
               setSelectedPageIds([]);
               setStatus("all");
-              setSearch("");
+              setHeaderSearch("");
               setDateFrom("");
               setDateTo("");
             }}
@@ -317,15 +344,18 @@ const AllPosts = () => {
         ) : null}
 
         {visiblePosts.map((post) => {
-          const firstFacebookPostId = post.publishResults?.find((result) => result.fbPostId)?.fbPostId;
-          const facebookPostUrl = buildFacebookPostUrl(firstFacebookPostId);
+          const firstPublishedResult = post.publishResults?.find((result) => result.fbPostId);
+          const facebookPostUrl = buildFacebookPostUrl(firstPublishedResult?.fbPostId, {
+            pageFbId: firstPublishedResult?.pageFbId,
+            mediaType: post.mediaType,
+          });
           const canEdit = post.status !== "published";
           const isDraft = post.status === "draft";
-          const isQuickActionLoading = quickActionPostId === post.id;
+          const previewContent = buildPostPreview(post.content);
 
           return (
-            <Card key={post.id} className="surface-panel rounded-[28px] border-none p-4 sm:p-5">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <Card key={post.id} className="surface-panel rounded-[24px] border-none p-3.5 sm:p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="min-w-0 flex-1">
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <StatusBadge status={post.status} />
@@ -347,17 +377,27 @@ const AllPosts = () => {
                       <span>Draft saved. Review the content, then publish it now or schedule it for later.</span>
                     </div>
                   ) : null}
-                  <p className="mb-3 whitespace-pre-wrap text-sm leading-6 text-foreground">{post.content}</p>
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <div className="mb-2">
+                    <div className="flex items-start gap-3">
+                      {renderPostMediaPreview(post)}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                          {post.mediaType ? `${post.mediaType} post` : "Post summary"}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-sm leading-6 text-foreground">{previewContent}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     <span>Created: {format(new Date(post.createdAt), "MMM d, yyyy · h:mm a")}</span>
                     {post.scheduledFor ? <span>Scheduled: {format(new Date(post.scheduledFor), "MMM d, yyyy · h:mm a")}</span> : null}
                     {post.publishedAt ? <span>Published: {format(new Date(post.publishedAt), "MMM d, yyyy · h:mm a")}</span> : null}
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 lg:max-w-[420px] lg:justify-end">
+                <div className="flex flex-wrap gap-2 lg:max-w-[420px] lg:justify-end lg:self-center">
                   {facebookPostUrl ? (
-                    <Button asChild size="sm" variant="outline" className="gap-1.5 rounded-xl">
+                    <Button asChild size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl bg-white">
                       <a href={facebookPostUrl} target="_blank" rel="noreferrer">
                         Open <ArrowUpRight className="h-3.5 w-3.5" />
                       </a>
@@ -366,37 +406,16 @@ const AllPosts = () => {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="gap-1.5 rounded-xl"
+                    className="h-9 gap-1.5 rounded-xl bg-white"
                     onClick={() => openEdit(post)}
                     disabled={!canEdit}
                   >
-                    <PencilLine className="h-3.5 w-3.5" /> {isDraft ? "Continue draft" : canEdit ? "Edit" : "Published"}
+                    <PencilLine className="h-3.5 w-3.5" /> {isDraft ? "Continue draft" : "Edit"}
                   </Button>
-                  {isDraft ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="gap-1.5 rounded-xl"
-                      onClick={() => handleOpenDraftScheduler(post)}
-                      disabled={isQuickActionLoading}
-                    >
-                      <Calendar className="h-3.5 w-3.5" /> Schedule
-                    </Button>
-                  ) : null}
-                  {isDraft ? (
-                    <Button
-                      size="sm"
-                      className="gap-1.5 rounded-xl bg-gradient-primary hover:opacity-90"
-                      onClick={() => handleQuickPublishDraft(post)}
-                      disabled={isQuickActionLoading}
-                    >
-                      <Send className="h-3.5 w-3.5" /> {isQuickActionLoading ? "Publishing..." : "Publish now"}
-                    </Button>
-                  ) : null}
-                  <Button size="sm" variant="outline" className="gap-1.5 rounded-xl" onClick={() => handleHideToggle(post)}>
+                  <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl bg-white" onClick={() => handleHideToggle(post)}>
                     <EyeOff className="h-3.5 w-3.5" /> {post.hidden ? "Unhide" : "Hide"}
                   </Button>
-                  <Button size="sm" variant="outline" className="gap-1.5 rounded-xl text-destructive hover:text-destructive" onClick={() => handleDelete(post.id)}>
+                  <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl bg-white text-destructive hover:text-destructive" onClick={() => handleDelete(post.id)}>
                     <Trash2 className="h-3.5 w-3.5" /> Delete
                   </Button>
                 </div>

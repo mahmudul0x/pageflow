@@ -10,6 +10,19 @@ from apps.pages.models import FacebookPage
 from apps.posts.models import PagePostResult
 
 
+PAGE_INSIGHT_METRICS = {
+    "reach": ["page_reach"],
+    "impressions": ["page_media_view", "page_impressions"],
+    "page_likes": ["page_follows", "page_fans"],
+    "engaged_users": ["page_engaged_users"],
+}
+
+POST_INSIGHT_METRICS = {
+    "reach": ["post_media_view", "post_impressions"],
+    "engagement": ["post_engaged_users"],
+}
+
+
 def parse_date_range(raw_value):
     try:
         value = int(raw_value)
@@ -23,7 +36,6 @@ def build_page_insights_params(page_access_token, date_range):
     since = (now - timezone.timedelta(days=date_range - 1)).date().isoformat()
     until = now.date().isoformat()
     return {
-        "metric": "page_impressions,page_reach,page_fans,page_engaged_users",
         "period": "day",
         "access_token": page_access_token,
         "since": since,
@@ -36,6 +48,20 @@ def map_insights(response_data):
     for item in response_data:
         metrics_map[item["name"]] = item.get("values", [])
     return metrics_map
+
+
+def extract_graph_error(response):
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = {}
+
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return error["message"]
+
+    return f"Facebook insights request failed with status {response.status_code}."
 
 
 def sum_metric(values):
@@ -93,24 +119,71 @@ def truncate_post_label(content, max_length=48):
     return f"{compact[: max_length - 3]}..."
 
 
-def fetch_post_performance(result):
-    response = requests.get(
-        f"https://graph.facebook.com/v18.0/{result.fb_post_id}/insights",
-        params={
-            "metric": "post_impressions,post_engaged_users",
-            "access_token": result.page.access_token,
-        },
-        timeout=30,
-    )
+def first_available_metric(metrics_map, candidates):
+    for metric in candidates:
+        if metric in metrics_map:
+            return metrics_map.get(metric, [])
+    return []
 
-    if response.status_code != 200:
+
+def fetch_insights_with_fallback(url, base_params, metric_groups):
+    metrics_map = {}
+    errors = []
+
+    for label, candidates in metric_groups.items():
+        metric_loaded = False
+        last_error = None
+
+        for metric in candidates:
+            try:
+                response = requests.get(
+                    url,
+                    params={**base_params, "metric": metric},
+                    timeout=30,
+                )
+            except requests.RequestException as exc:
+                last_error = str(exc)
+                continue
+
+            if response.status_code != 200:
+                last_error = extract_graph_error(response)
+                continue
+
+            metrics_map.update(map_insights(response.json().get("data", [])))
+            metric_loaded = True
+            break
+
+        if not metric_loaded and last_error:
+            errors.append(f"{label}: {last_error}")
+
+    if not metrics_map and errors:
+        return None, "; ".join(errors)
+
+    return metrics_map, "; ".join(errors) if errors else None
+
+
+def fetch_post_performance(result):
+    metrics_map, error = fetch_insights_with_fallback(
+        f"https://graph.facebook.com/v18.0/{result.fb_post_id}/insights",
+        {"access_token": result.page.access_token},
+        POST_INSIGHT_METRICS,
+    )
+    if metrics_map is None:
         return None
 
-    metrics_map = map_insights(response.json().get("data", []))
     return {
-        "reach": sum_metric(metrics_map.get("post_impressions", [])),
+        "reach": sum_metric(first_available_metric(metrics_map, POST_INSIGHT_METRICS["reach"])),
         "engagement": sum_metric(metrics_map.get("post_engaged_users", [])),
+        "error": error,
     }
+
+
+def fetch_page_insights(page, date_range):
+    return fetch_insights_with_fallback(
+        f"https://graph.facebook.com/v18.0/{page.page_id}/insights",
+        build_page_insights_params(page.access_token, date_range),
+        PAGE_INSIGHT_METRICS,
+    )
 
 
 def build_post_queryset(user, date_range, page=None):
@@ -168,6 +241,9 @@ def build_post_performance(user, date_range, page=None):
                     "post_id": result.post_id,
                     "name": truncate_post_label(result.post.content),
                     "content": result.post.content,
+                    "media_url": result.post.media_url,
+                    "status": result.post.status,
+                    "media_type": result.post.media_type or "text",
                     "page": result.page.name,
                     "page_id": result.page_id,
                     "fb_post_id": result.fb_post_id,
@@ -217,58 +293,57 @@ class AnalyticsView(APIView):
             total_likes = 0
             total_engaged_users = 0
             chart_store = defaultdict(lambda: {"reach": 0, "impressions": 0})
+            page_errors = []
+            successful_pages = 0
 
             for page in pages:
-                response = requests.get(
-                    f"https://graph.facebook.com/v18.0/{page.page_id}/insights",
-                    params=build_page_insights_params(page.access_token, date_range),
-                    timeout=30,
-                )
-
-                if response.status_code != 200:
-                    continue
-
-                metrics_map = map_insights(response.json().get("data", []))
+                metrics_map, error = fetch_page_insights(page, date_range)
+                if error:
+                    page_errors.append(f"{page.name}: {error}")
+                    if metrics_map is None:
+                        continue
+                successful_pages += 1
                 reach_points = metrics_map.get("page_reach", [])
-                impression_points = metrics_map.get("page_impressions", [])
+                impression_points = first_available_metric(metrics_map, PAGE_INSIGHT_METRICS["impressions"])
 
                 total_reach += sum_metric(reach_points)
                 total_impressions += sum_metric(impression_points)
                 total_engaged_users += sum_metric(metrics_map.get("page_engaged_users", []))
-                total_likes += latest_metric_value(metrics_map.get("page_fans", [])) or page.followers_count
+                total_likes += latest_metric_value(first_available_metric(metrics_map, PAGE_INSIGHT_METRICS["page_likes"])) or page.followers_count
 
                 merge_chart_points(chart_store, reach_points, "reach")
                 merge_chart_points(chart_store, impression_points, "impressions")
 
             post_metrics = build_post_performance(request.user, date_range)
 
-            return Response(
-                {
-                    "page_name": "All Pages",
-                    "metrics": {
-                        "total_reach": total_reach,
-                        "impressions": total_impressions,
-                        "page_likes": total_likes,
-                        "engagement_rate": compute_engagement_rate(total_engaged_users, total_reach),
-                    },
-                    "chart_data": serialize_chart_points(chart_store),
-                    "post_performance": post_metrics["top_posts"],
-                    "individual_post_analytics": post_metrics["individual_posts"],
-                }
-            )
+            payload = {
+                "page_name": "All Pages",
+                "metrics": {
+                    "total_reach": total_reach,
+                    "impressions": total_impressions,
+                    "page_likes": total_likes,
+                    "engagement_rate": compute_engagement_rate(total_engaged_users, total_reach),
+                },
+                "chart_data": serialize_chart_points(chart_store),
+                "post_performance": post_metrics["top_posts"],
+                "individual_post_analytics": post_metrics["individual_posts"],
+            }
+
+            if successful_pages == 0 and page_errors:
+                payload["error"] = page_errors[0]
+            elif page_errors:
+                payload["warning"] = "; ".join(page_errors[:3])
+
+            return Response(payload)
 
         try:
             page = FacebookPage.objects.get(id=page_id, user=request.user)
         except FacebookPage.DoesNotExist:
             return Response({"error": "Page not found"}, status=404)
 
-        response = requests.get(
-            f"https://graph.facebook.com/v18.0/{page.page_id}/insights",
-            params=build_page_insights_params(page.access_token, date_range),
-            timeout=30,
-        )
+        metrics_map, error = fetch_page_insights(page, date_range)
 
-        if response.status_code != 200:
+        if error and metrics_map is None:
             return Response(
                 {
                     "page_name": page.name,
@@ -280,13 +355,12 @@ class AnalyticsView(APIView):
                     },
                     "chart_data": [],
                     "post_performance": [],
-                    "error": "Could not fetch live analytics",
+                    "individual_post_analytics": [],
+                    "error": error,
                 }
             )
-
-        metrics_map = map_insights(response.json().get("data", []))
         reach_points = metrics_map.get("page_reach", [])
-        impression_points = metrics_map.get("page_impressions", [])
+        impression_points = first_available_metric(metrics_map, PAGE_INSIGHT_METRICS["impressions"])
         chart_store = defaultdict(lambda: {"reach": 0, "impressions": 0})
         merge_chart_points(chart_store, reach_points, "reach")
         merge_chart_points(chart_store, impression_points, "impressions")
@@ -294,20 +368,21 @@ class AnalyticsView(APIView):
         total_reach = sum_metric(reach_points)
         total_impressions = sum_metric(impression_points)
         total_engaged_users = sum_metric(metrics_map.get("page_engaged_users", []))
-        total_likes = latest_metric_value(metrics_map.get("page_fans", [])) or page.followers_count
+        total_likes = latest_metric_value(first_available_metric(metrics_map, PAGE_INSIGHT_METRICS["page_likes"])) or page.followers_count
         post_metrics = build_post_performance(request.user, date_range, page=page)
 
-        return Response(
-            {
-                "page_name": page.name,
-                "metrics": {
-                    "total_reach": total_reach,
-                    "impressions": total_impressions,
-                    "page_likes": total_likes,
-                    "engagement_rate": compute_engagement_rate(total_engaged_users, total_reach),
-                },
-                "chart_data": serialize_chart_points(chart_store),
-                "post_performance": post_metrics["top_posts"],
-                "individual_post_analytics": post_metrics["individual_posts"],
-            }
-        )
+        payload = {
+            "page_name": page.name,
+            "metrics": {
+                "total_reach": total_reach,
+                "impressions": total_impressions,
+                "page_likes": total_likes,
+                "engagement_rate": compute_engagement_rate(total_engaged_users, total_reach),
+            },
+            "chart_data": serialize_chart_points(chart_store),
+            "post_performance": post_metrics["top_posts"],
+            "individual_post_analytics": post_metrics["individual_posts"],
+        }
+        if error:
+            payload["warning"] = error
+        return Response(payload)

@@ -31,6 +31,8 @@ class AnalyticsViewTests(TestCase):
         self.post = Post.objects.create(
             user=self.user,
             content="A strong analytics post",
+            media_url="https://cdn.example.com/post-image.jpg",
+            media_type="image",
             status="published",
             published_at=timezone.now(),
         )
@@ -43,49 +45,56 @@ class AnalyticsViewTests(TestCase):
 
     @patch("apps.analytics.views.requests.get")
     def test_analytics_uses_requested_date_range_and_computes_engagement(self, mock_get):
-        page_response = Mock()
-        page_response.status_code = 200
-        page_response.json.return_value = {
-            "data": [
+        metric_payloads = {
+            "page_reach": [
                 {
                     "name": "page_reach",
                     "values": [
                         {"value": 100, "end_time": "2026-04-22T07:00:00+0000"},
                         {"value": 50, "end_time": "2026-04-23T07:00:00+0000"},
                     ],
-                },
+                }
+            ],
+            "page_media_view": [
                 {
-                    "name": "page_impressions",
+                    "name": "page_media_view",
                     "values": [
                         {"value": 140, "end_time": "2026-04-22T07:00:00+0000"},
                         {"value": 60, "end_time": "2026-04-23T07:00:00+0000"},
                     ],
-                },
+                }
+            ],
+            "page_engaged_users": [
                 {
                     "name": "page_engaged_users",
                     "values": [
                         {"value": 15, "end_time": "2026-04-22T07:00:00+0000"},
                         {"value": 15, "end_time": "2026-04-23T07:00:00+0000"},
                     ],
-                },
+                }
+            ],
+            "page_follows": [
                 {
-                    "name": "page_fans",
+                    "name": "page_follows",
                     "values": [
                         {"value": 240, "end_time": "2026-04-22T07:00:00+0000"},
                         {"value": 255, "end_time": "2026-04-23T07:00:00+0000"},
                     ],
-                },
-            ]
+                }
+            ],
+            "post_media_view": [{"name": "post_media_view", "values": [{"value": 90}]}],
+            "post_engaged_users": [{"name": "post_engaged_users", "values": [{"value": 18}]}],
         }
-        post_response = Mock()
-        post_response.status_code = 200
-        post_response.json.return_value = {
-            "data": [
-                {"name": "post_impressions", "values": [{"value": 90}]},
-                {"name": "post_engaged_users", "values": [{"value": 18}]},
-            ]
-        }
-        mock_get.side_effect = [page_response, post_response]
+
+        def mocked_get(*args, **kwargs):
+            response = Mock()
+            response.status_code = 200
+            response.json.return_value = {
+                "data": metric_payloads.get(kwargs["params"]["metric"], [])
+            }
+            return response
+
+        mock_get.side_effect = mocked_get
 
         response = self.client.get("/api/analytics/", {"page_id": str(self.page.id), "date_range": "7"})
 
@@ -103,10 +112,22 @@ class AnalyticsViewTests(TestCase):
         self.assertEqual(len(response.data["individual_post_analytics"]), 1)
         self.assertEqual(response.data["individual_post_analytics"][0]["page"], "Insights Page")
         self.assertEqual(response.data["individual_post_analytics"][0]["engagement_rate"], 20.0)
+        self.assertEqual(response.data["individual_post_analytics"][0]["media_url"], "https://cdn.example.com/post-image.jpg")
+        self.assertEqual(response.data["individual_post_analytics"][0]["media_type"], "image")
 
-        request_params = mock_get.call_args_list[0].kwargs["params"]
-        self.assertEqual(request_params["access_token"], "page-token")
-        self.assertEqual(request_params["period"], "day")
-        self.assertEqual(request_params["metric"], "page_impressions,page_reach,page_fans,page_engaged_users")
-        self.assertIn("since", request_params)
-        self.assertIn("until", request_params)
+        page_request_params = mock_get.call_args_list[0].kwargs["params"]
+        self.assertEqual(page_request_params["access_token"], "page-token")
+        self.assertEqual(page_request_params["period"], "day")
+        self.assertIn("since", page_request_params)
+        self.assertIn("until", page_request_params)
+        self.assertEqual(
+            [call.kwargs["params"]["metric"] for call in mock_get.call_args_list],
+            [
+                "page_reach",
+                "page_media_view",
+                "page_follows",
+                "page_engaged_users",
+                "post_media_view",
+                "post_engaged_users",
+            ],
+        )

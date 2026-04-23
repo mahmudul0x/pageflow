@@ -6,6 +6,7 @@ export const analyticsService = {
     return {
       pageName: data?.page_name ?? 'Analytics',
       error: data?.error ?? null,
+      warning: data?.warning ?? null,
       totalReach: data?.metrics?.total_reach ?? 0,
       impressions: data?.metrics?.impressions ?? 0,
       pageLikes: data?.metrics?.page_likes ?? 0,
@@ -34,6 +35,9 @@ export const analyticsService = {
             postId: item.post_id ? String(item.post_id) : undefined,
             name: item.name ?? 'Untitled post',
             content: item.content ?? item.name ?? 'Untitled post',
+            mediaUrl: item.media_url ?? undefined,
+            status: item.status ?? 'published',
+            mediaType: item.media_type ?? 'text',
             page: item.page ?? 'Unknown page',
             pageId: item.page_id ? String(item.page_id) : undefined,
             fbPostId: item.fb_post_id ?? undefined,

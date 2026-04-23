@@ -9,6 +9,7 @@ type ApiPage = {
 
 type ApiPostResult = {
   page: string;
+  page_id?: string | null;
   success: boolean;
   fb_post_id?: string | null;
   error?: string | null;
@@ -44,6 +45,7 @@ const toPost = (post: ApiPost): Post => ({
   publishResults: Array.isArray(post.results)
     ? post.results.map((result) => ({
         page: result.page,
+        pageFbId: result.page_id || undefined,
         success: Boolean(result.success),
         fbPostId: result.fb_post_id || undefined,
         error: result.error || undefined,
